@@ -21,6 +21,8 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.sql.*;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import cn.myservice.MyLoadScriptService;
 import cn.myservice.MySqlAstService;
@@ -259,45 +261,78 @@ public class JdbcThinStatement implements Statement {
         return sb.toString();
     }
 
+    private boolean isStream(String sql)
+    {
+        String pattern = "^SET\\s+STREAMING\\s+";
+        Pattern p = Pattern.compile(pattern, Pattern.CASE_INSENSITIVE|Pattern.MULTILINE);
+        Matcher m = p.matcher(sql.trim());
+        return m.find();
+    }
+
+    private boolean isStream(List<List<String>> lst)
+    {
+        if (lst.size() == 1)
+        {
+            List<String> rs = lst.get(0);
+            if (rs.size() > 2)
+            {
+                if (rs.get(0).toUpperCase().equals("SET") && rs.get(1).toUpperCase().equals("STREAMING"))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public String myExecuteQuery(String sql) throws SQLException {
         if (!Strings.isNullOrEmpty(this.conn.getUserToken())) {
 
-            // 如果 mylst 中包括：loadFromNative 函数，则先执行这个函数来提交给服务器
-
-            //String mysql0 = String.format("select smartSql(%s, ?)", this.conn.getGroup_id());
-            String mysql0 = "select smartSql(?,?)";
-            //String mysql0 = "select my_line_inary(?)";
-            List<Object> lst = new ArrayList<Object>();
-            lst.add(MyLineToBinary.objToBytes(this.conn.getUserToken()));
-            if (this.mySqlAst != null && this.myLoadScript != null) {
-                List<List<String>> myLst = reList(mySqlAst.getSmartSegment(sql));
-                lst.add(MyLineToBinary.objToBytes(myLst));
-            }
-            else
+            if (this.mySqlAst != null)
             {
-                lst.add(MyLineToBinary.objToBytes(sql));
+                List<List<String>> lstSegment = mySqlAst.getSmartSegment(sql);
+                if (isStream(lstSegment))
+                {
+                    return sql;
+                }
+
+                // 如果 mylst 中包括：loadFromNative 函数，则先执行这个函数来提交给服务器
+
+                //String mysql0 = String.format("select smartSql(%s, ?)", this.conn.getGroup_id());
+                String mysql0 = "select smartSql(?,?)";
+                //String mysql0 = "select my_line_inary(?)";
+                List<Object> lst = new ArrayList<Object>();
+                lst.add(MyLineToBinary.objToBytes(this.conn.getUserToken()));
+                if (this.myLoadScript != null) {
+                    List<List<String>> myLst = reList(lstSegment);
+                    lst.add(MyLineToBinary.objToBytes(myLst));
+                }
+                else
+                {
+                    lst.add(MyLineToBinary.objToBytes(sql));
+                }
+
+                //lst.add(sql);
+                execute0(JdbcStatementType.SELECT_STATEMENT_TYPE, mysql0, lst);
+
+                ResultSet rs = getResultSet();
+
+                if (rs == null)
+                    throw new SQLException("The query isn't SELECT query: " + sql, SqlStateCode.PARSING_EXCEPTION);
+
+                String mysql = "";
+                while (rs.next()) {
+                    mysql = rs.getString(1);
+                }
+                rs.close();
+
+                if (!Strings.isNullOrEmpty(mysql))
+                {
+                    return mysql;
+                }
+
+                return sql;
             }
-
-            //lst.add(sql);
-            execute0(JdbcStatementType.SELECT_STATEMENT_TYPE, mysql0, lst);
-
-            ResultSet rs = getResultSet();
-
-            if (rs == null)
-                throw new SQLException("The query isn't SELECT query: " + sql, SqlStateCode.PARSING_EXCEPTION);
-
-            String mysql = "";
-            while (rs.next()) {
-                mysql = rs.getString(1);
-            }
-            rs.close();
-
-            if (!Strings.isNullOrEmpty(mysql))
-            {
-                return mysql;
-            }
-
-            return sql;
         }
         return null;
     }
@@ -328,7 +363,15 @@ public class JdbcThinStatement implements Statement {
 
     /** {@inheritDoc} */
     @Override public ResultSet executeQuery(String sql0) throws SQLException {
-        String sql = myExecuteQuery(sql0);
+        String sql = "";
+        if (!conn.isStream())
+        {
+            sql = myExecuteQuery(sql0);
+        }
+        else
+        {
+            sql = sql0;
+        }
         execute0(JdbcStatementType.SELECT_STATEMENT_TYPE, sql, null);
 
         ResultSet rs = getResultSet();
@@ -579,16 +622,24 @@ public class JdbcThinStatement implements Statement {
 
     /** {@inheritDoc} */
     @Override public int executeUpdate(String sql) throws SQLException {
-//        execute0(JdbcStatementType.UPDATE_STMT_TYPE, myExecuteQuery(sql), null);
+//        String sql = "";
+//        if (!conn.isStream())
+//        {
+//            sql = myExecuteQuery(sql0);
+//        }
+//        else
+//        {
+//            execute0(JdbcStatementType.UPDATE_STMT_TYPE, sql0, null);
 //
-//        int res = getUpdateCount();
+//            int res = getUpdateCount();
 //
-//        if (res == -1)
-//            throw new SQLException("The query is not DML statememt: " + sql);
+//            if (res == -1)
+//                throw new SQLException("The query is not DML statememt: " + sql);
 //
-//        return res;
-        boolean f = this.execute(sql);
-        if (f == true)
+//            return res;
+//        }
+
+        if (this.execute(sql))
         {
             return 0;
         }
@@ -760,7 +811,15 @@ public class JdbcThinStatement implements Statement {
 
     /** {@inheritDoc} */
     @Override public boolean execute(String sql0) throws SQLException {
-        String sql = myExecuteQuery(sql0);
+        String sql = "";
+        if (!conn.isStream())
+        {
+            sql = myExecuteQuery(sql0);
+        }
+        else
+        {
+            sql = sql0;
+        }
         ensureNotClosed();
 
         execute0(JdbcStatementType.ANY_STATEMENT_TYPE, sql, null);
@@ -851,7 +910,15 @@ public class JdbcThinStatement implements Statement {
 
     /** {@inheritDoc} */
     @Override public void addBatch(String sql0) throws SQLException {
-        String sql = myExecuteQuery(sql0);
+        String sql = "";
+        if (!conn.isStream())
+        {
+            sql = myExecuteQuery(sql0);
+        }
+        else
+        {
+            sql = sql0;
+        }
         ensureNotClosed();
 
         checkStatementEligibleForBatching(sql);
@@ -920,7 +987,7 @@ public class JdbcThinStatement implements Statement {
         if (F.isEmpty(batch))
             return new int[0];
 
-        JdbcBatchExecuteRequest req = new JdbcBatchExecuteRequest(conn.getSchema(), batch,
+        JdbcBatchExecuteRequest req = new JdbcBatchExecuteRequest(conn.getSchema(), conn.getUserToken(), batch,
             conn.getAutoCommit(), false);
 
         try {

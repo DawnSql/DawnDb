@@ -2,7 +2,6 @@ package org.gridgain.myservice;
 
 import cn.mysuper.service.IMyPlusFunc;
 
-import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,17 +11,26 @@ import org.gridgain.plus.dml.MySmartScenes;
 import org.gridgain.plus.sql.MySuperSql;
 import org.gridgain.plus.sql.jdbc.SmartJdbcFunc;
 import org.gridgain.smart.ml.MyTrianDataUtil;
-import org.smart.service.MySmartScenesService;
-import org.tools.MyGson;
 import org.tools.MyPlusUtil;
 
 public class MyPlusFuncImpl implements IMyPlusFunc {
 
-    private MySmartScenes mySmartScenes = null;
+    private static class InstanceHolder {
+        public static MyPlusFuncImpl instance = new MyPlusFuncImpl();
+    }
 
-    public MyPlusFuncImpl()
+    /**
+     * 获取单例模式
+     * */
+    public static MyPlusFuncImpl getInstance() {
+        return InstanceHolder.instance;
+    }
+
+    private MySmartScenes mySmartScenes;
+
+    private MyPlusFuncImpl()
     {
-        mySmartScenes = MySmartScenesService.getInstance().getMySmartScenes();
+        mySmartScenes = new MySmartScenes();
     }
 
     @Override
@@ -47,40 +55,77 @@ public class MyPlusFuncImpl implements IMyPlusFunc {
 //    }
 
     @Override
-    public Object myFun(String methodName, Object... ps) {
-        return MyPlusUtil.invokeFuncObj(Ignition.ignite(), methodName, ps);
-    }
-
-    @Override
-    public Object myInvoke(String methodName, String group_id, Object... ps) {
+    public List myFun(String methodName, Object... ps) {
         List<Object> lst = new ArrayList<>();
         for (Object m : ps)
         {
             lst.add(m);
         }
-        return this.mySmartScenes.invokeScenes(Ignition.ignite(), MyGson.lineToObj(group_id), methodName, lst);
+        return mySmartScenes.invokeFunc(Ignition.ignite(), methodName, lst);
     }
 
+//    @Override
+//    public Object myInvoke(String methodName, String group_id, Object... ps) {
+//        List<Object> lst = new ArrayList<>();
+//        for (Object m : ps)
+//        {
+//            lst.add(m);
+//        }
+//        return this.mySmartScenes.invokeScenes(Ignition.ignite(), MyGson.lineToObj(group_id), methodName, lst);
+//    }
+
     @Override
-    public Object myInvokeLink(String methodName, String group_id, Object... ps) {
+    public List myInvoke(String methodName, String user_token, Object... ps) {
         List<Object> lst = new ArrayList<>();
         for (Object m : ps)
         {
             lst.add(m);
         }
-        Object rs = mySmartScenes.invokeScenesLink(Ignition.ignite(), MyGson.lineToObj(group_id), methodName, lst);
-        return rs;
+        return mySmartScenes.invokeScenes(Ignition.ignite(), user_token, methodName, lst);
     }
 
+//    @Override
+//    public Object myInvokeLink(String methodName, String group_id, Object... ps) {
+//        List<Object> lst = new ArrayList<>();
+//        for (Object m : ps)
+//        {
+//            lst.add(m);
+//        }
+//        Object rs = mySmartScenes.invokeScenesLink(Ignition.ignite(), MyGson.lineToObj(group_id), methodName, lst);
+//        return rs;
+//    }
+
     @Override
-    public Object myInvokeAllFuncScenes(String methodName, String group_id, Object... ps) {
+    public List myInvokeLink(String methodName, String user_token, Object... ps) {
         List<Object> lst = new ArrayList<>();
         for (Object m : ps)
         {
             lst.add(m);
         }
-        Object rs = SmartJdbcFunc.invokeAllFuncScenes(Ignition.ignite(), MyGson.lineToObj(group_id), methodName, lst);
-        return rs;
+
+        return mySmartScenes.invokeScenesLink(Ignition.ignite(), user_token, methodName, lst);
+    }
+
+//    @Override
+//    public Object myInvokeAllFuncScenes(String methodName, String group_id, Object... ps) {
+//        List<Object> lst = new ArrayList<>();
+//        for (Object m : ps)
+//        {
+//            lst.add(m);
+//        }
+//        Object rs = SmartJdbcFunc.invokeAllFuncScenes(Ignition.ignite(), MyGson.lineToObj(group_id), methodName, lst);
+//        return rs;
+//    }
+
+    @Override
+    public List myInvokeAllFuncScenes(String methodName, String user_token, Object... ps) {
+        List<Object> lst = new ArrayList<>();
+        for (Object m : ps)
+        {
+            lst.add(m);
+        }
+
+        return SmartJdbcFunc.invokeAllFuncScenes(Ignition.ignite(), user_token, methodName, lst);
     }
 
 //    @Override

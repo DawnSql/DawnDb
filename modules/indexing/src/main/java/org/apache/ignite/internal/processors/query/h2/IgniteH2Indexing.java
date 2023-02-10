@@ -21,24 +21,14 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import javax.cache.CacheException;
+
+import cn.myservice.MyInsertKvService;
 import org.apache.ignite.IgniteCheckedException;
 import org.apache.ignite.IgniteDataStreamer;
 import org.apache.ignite.IgniteException;
@@ -740,6 +730,54 @@ public class IgniteH2Indexing implements GridQueryIndexing {
 
             ress.add(res);
         }
+
+        return ress;
+    }
+
+    /** {@inheritDoc} */
+    @SuppressWarnings({"ForLoopReplaceableByForEach", "ConstantConditions"})
+    @Override public List<Long> myStreamBatchedUpdateQuery(
+            String userToken,
+            String qry,
+            List<Object[]> params,
+            SqlClientContext cliCtx,
+            String qryInitiatorId
+    ) throws IgniteCheckedException {
+        if (cliCtx == null || !cliCtx.isStream()) {
+            U.warn(log, "Connection is not in streaming mode.");
+
+            return zeroBatchedStreamedUpdateResult(params.size());
+        }
+
+        List<Hashtable<String, Object>> lst;
+        if (params != null && params.size() > 0)
+        {
+            lst = MyInsertKvService.getInstance().getMyInsertKv().getInsertKvAgrs(userToken, qry, params.get(0));
+        }
+        else
+        {
+            lst = MyInsertKvService.getInstance().getMyInsertKv().getInsertKvAgrs(userToken, qry, null);
+        }
+
+        List<Long> ress = new ArrayList<>();
+        if (lst.size() > 0) {
+            Hashtable<String, Object> ht = lst.get(0);
+            String cacheName = ht.get("cache_name").toString();
+
+            IgniteDataStreamer streamer = cliCtx.streamerForCache(cacheName);
+
+            streamer.allowOverwrite(true);
+
+            for (Hashtable<String, Object> m : lst) {
+                streamer.addData(m.get("key"), m.get("value"));
+            }
+        }
+
+//        for (int i = 0; i < params.size(); i++) {
+//            long res = streamQuery0(qry, schemaName, streamer, dml, params.get(i), qryInitiatorId);
+//
+//            ress.add(res);
+//        }
 
         return ress;
     }
